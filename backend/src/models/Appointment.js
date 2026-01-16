@@ -12,10 +12,12 @@ const appointmentSchema = new mongoose.Schema(
       required: true,
       trim: true
     },
-    date: {
-      type: Date,
-      required: true
-    },
+date: {
+  type: String,
+  required: true, // formato "YYYY-MM-DD"
+  match: /^\d{4}-\d{2}-\d{2}$/ // opcional: asegura formato válido
+}
+,
     startTime: {
       type: String, // "HH:mm"
       required: true

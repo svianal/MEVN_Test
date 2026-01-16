@@ -2,12 +2,13 @@ const Appointment = require('../models/Appointment');
 const { timeToMinutes } = require('../utils/time');
 const mongoose = require('mongoose');
 
+// Crear cita
 exports.createAppointment = async (req, res) => {
   try {
     const {
       patientName,
       doctorName,
-      date,
+      date,       // string "YYYY-MM-DD"
       startTime,
       endTime,
       reason
@@ -16,16 +17,13 @@ exports.createAppointment = async (req, res) => {
     // 1️⃣ Validar horas
     if (timeToMinutes(endTime) <= timeToMinutes(startTime)) {
       return res.status(400).json({
-        message: 'endTime debe ser posterior a startTime'
+        message: 'La hora de fin debe ser posterior a la hora de inicio'
       });
     }
 
     // 2️⃣ Validar fecha (no pasada)
-    const appointmentDate = new Date(date);
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    if (appointmentDate < today) {
+    const todayStr = new Date().toISOString().split('T')[0]; // "YYYY-MM-DD"
+    if (date < todayStr) {
       return res.status(400).json({
         message: 'La fecha de la cita no puede ser anterior a hoy'
       });
@@ -34,7 +32,7 @@ exports.createAppointment = async (req, res) => {
     // 3️⃣ Buscar solapamientos
     const existingAppointments = await Appointment.find({
       doctorName,
-      date: appointmentDate,
+      date,              // comparar string directamente
       status: 'scheduled'
     });
 
@@ -44,8 +42,6 @@ exports.createAppointment = async (req, res) => {
     const conflicts = existingAppointments.filter(app => {
       const existingStart = timeToMinutes(app.startTime);
       const existingEnd = timeToMinutes(app.endTime);
-
-      // Condición clásica de solapamiento
       return newStart < existingEnd && newEnd > existingStart;
     });
 
@@ -60,7 +56,7 @@ exports.createAppointment = async (req, res) => {
     const appointment = await Appointment.create({
       patientName,
       doctorName,
-      date: appointmentDate,
+      date,          // guardar como string
       startTime,
       endTime,
       reason
@@ -76,32 +72,18 @@ exports.createAppointment = async (req, res) => {
   }
 };
 
+// Obtener citas
 exports.getAppointments = async (req, res) => {
   try {
     const { date, doctorName, status } = req.query;
 
     const filters = {};
 
-    // Filtrar por doctor
-    if (doctorName) {
-      filters.doctorName = doctorName;
-    }
+    if (doctorName) filters.doctorName = doctorName;
+    if (status) filters.status = status;
 
-    // Filtrar por estado
-    if (status) {
-      filters.status = status;
-    }
-
-    // Filtrar por fecha exacta (día completo)
     if (date) {
-      const selectedDate = new Date(date);
-      const startOfDay = new Date(selectedDate.setHours(0, 0, 0, 0));
-      const endOfDay = new Date(selectedDate.setHours(23, 59, 59, 999));
-
-      filters.date = {
-        $gte: startOfDay,
-        $lte: endOfDay
-      };
+      filters.date = date; // comparar string directamente
     }
 
     const appointments = await Appointment.find(filters).sort({
@@ -118,35 +100,29 @@ exports.getAppointments = async (req, res) => {
   }
 };
 
+// Obtener cita por ID
 exports.getAppointmentById = async (req, res) => {
   try {
     const { id } = req.params;
 
-    // Validar ObjectId
     if (!mongoose.Types.ObjectId.isValid(id)) {
-      return res.status(400).json({
-        message: 'ID de cita inválido'
-      });
+      return res.status(400).json({ message: 'ID de cita inválido' });
     }
 
     const appointment = await Appointment.findById(id);
-
     if (!appointment) {
-      return res.status(404).json({
-        message: 'Cita no encontrada'
-      });
+      return res.status(404).json({ message: 'Cita no encontrada' });
     }
 
     res.status(200).json(appointment);
 
   } catch (error) {
     console.error(error);
-    res.status(500).json({
-      message: 'Error al obtener la cita'
-    });
+    res.status(500).json({ message: 'Error al obtener la cita' });
   }
 };
 
+// Actualizar cita
 exports.updateAppointment = async (req, res) => {
   try {
     const { id } = req.params;
@@ -160,19 +136,15 @@ exports.updateAppointment = async (req, res) => {
       status
     } = req.body;
 
-    // Validar ObjectId
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({ message: 'ID de cita inválido' });
     }
 
-    // Verificar existencia
     const appointment = await Appointment.findById(id);
-    if (!appointment) {
-      return res.status(404).json({ message: 'Cita no encontrada' });
-    }
+    if (!appointment) return res.status(404).json({ message: 'Cita no encontrada' });
 
     // Validar horas
-    if (startTime && endTime && endTime <= startTime) {
+    if (startTime && endTime && timeToMinutes(endTime) <= timeToMinutes(startTime)) {
       return res.status(400).json({
         message: 'La hora de fin debe ser posterior a la hora de inicio'
       });
@@ -180,34 +152,28 @@ exports.updateAppointment = async (req, res) => {
 
     // Validar fecha
     if (date) {
-      const appointmentDate = new Date(date);
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-
-      if (appointmentDate < today) {
+      const todayStr = new Date().toISOString().split('T')[0];
+      if (date < todayStr) {
         return res.status(400).json({
           message: 'La fecha no puede ser anterior a hoy'
         });
       }
     }
 
-    // Detectar solapamientos (EXCLUYENDO la cita actual)
+    // Detectar solapamientos (excluyendo la cita actual)
     if (doctorName || date || startTime || endTime) {
       const checkDoctor = doctorName || appointment.doctorName;
-      const checkDate = date || appointment.date;
+      const checkDate = date || appointment.date; // string
       const checkStart = startTime || appointment.startTime;
       const checkEnd = endTime || appointment.endTime;
 
       const overlappingAppointments = await Appointment.find({
-        _id: { $ne: id }, // 👈 excluir la cita actual
+        _id: { $ne: id },
         doctorName: checkDoctor,
         date: checkDate,
         status: { $ne: 'cancelled' },
         $or: [
-          {
-            startTime: { $lt: checkEnd },
-            endTime: { $gt: checkStart }
-          }
+          { startTime: { $lt: checkEnd }, endTime: { $gt: checkStart } }
         ]
       });
 
@@ -222,7 +188,7 @@ exports.updateAppointment = async (req, res) => {
     // Actualizar campos
     appointment.patientName = patientName ?? appointment.patientName;
     appointment.doctorName = doctorName ?? appointment.doctorName;
-    appointment.date = date ?? appointment.date;
+    appointment.date = date ?? appointment.date;          // string
     appointment.startTime = startTime ?? appointment.startTime;
     appointment.endTime = endTime ?? appointment.endTime;
     appointment.reason = reason ?? appointment.reason;
@@ -234,84 +200,55 @@ exports.updateAppointment = async (req, res) => {
 
   } catch (error) {
     console.error(error);
-    res.status(500).json({
-      message: 'Error al actualizar la cita'
-    });
+    res.status(500).json({ message: 'Error al actualizar la cita' });
   }
 };
 
+// Eliminar cita
 exports.deleteAppointment = async (req, res) => {
   try {
     const { id } = req.params;
 
-    // Validar ObjectId
     if (!mongoose.Types.ObjectId.isValid(id)) {
-      return res.status(400).json({
-        message: 'ID de cita inválido'
-      });
+      return res.status(400).json({ message: 'ID de cita inválido' });
     }
 
     const appointment = await Appointment.findByIdAndDelete(id);
+    if (!appointment) return res.status(404).json({ message: 'Cita no encontrada' });
 
-    if (!appointment) {
-      return res.status(404).json({
-        message: 'Cita no encontrada'
-      });
-    }
-
-    res.status(200).json({
-      message: 'Cita eliminada correctamente'
-    });
+    res.status(200).json({ message: 'Cita eliminada correctamente' });
 
   } catch (error) {
     console.error(error);
-    res.status(500).json({
-      message: 'Error al eliminar la cita'
-    });
+    res.status(500).json({ message: 'Error al eliminar la cita' });
   }
 };
 
+// Verificar conflictos
 exports.checkConflicts = async (req, res) => {
   try {
-    const {
-      doctorName,
-      date,
-      startTime,
-      endTime,
-      excludeId
-    } = req.query;
+    const { doctorName, date, startTime, endTime, excludeId } = req.query;
 
-    // Validaciones básicas
     if (!doctorName || !date || !startTime || !endTime) {
-      return res.status(400).json({
-        message: 'Faltan parámetros requeridos'
-      });
+      return res.status(400).json({ message: 'Faltan parámetros requeridos' });
     }
 
     if (endTime <= startTime) {
-      return res.status(400).json({
-        message: 'La hora de fin debe ser posterior a la hora de inicio'
-      });
+      return res.status(400).json({ message: 'La hora de fin debe ser posterior a la hora de inicio' });
     }
 
     const query = {
       doctorName,
-      date: new Date(date),
+      date,       // string
       status: { $ne: 'cancelled' },
       $or: [
-        {
-          startTime: { $lt: endTime },
-          endTime: { $gt: startTime }
-        }
+        { startTime: { $lt: endTime }, endTime: { $gt: startTime } }
       ]
     };
 
-    // Excluir una cita específica (para ediciones)
     if (excludeId) {
       if (!mongoose.Types.ObjectId.isValid(excludeId)) {
-        return res.status(400).json({
-          message: 'excludeId inválido'
-        });
+        return res.status(400).json({ message: 'excludeId inválido' });
       }
       query._id = { $ne: excludeId };
     }
@@ -322,8 +259,6 @@ exports.checkConflicts = async (req, res) => {
 
   } catch (error) {
     console.error(error);
-    res.status(500).json({
-      message: 'Error al verificar conflictos'
-    });
+    res.status(500).json({ message: 'Error al verificar conflictos' });
   }
 };

@@ -1,5 +1,10 @@
-# Node
-node_modules/
+# Node modules (back y front)
+backend/node_modules/
+frontend/node_modules/
+
+# Logs
+logs/
+*.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
@@ -12,12 +17,8 @@ yarn-error.log*
 .env.production
 
 # Build outputs
-dist/
-build/
-
-# Logs
-logs/
-*.log
+frontend/dist/
+backend/build/
 
 # OS files
 .DS_Store
@@ -28,9 +29,9 @@ Thumbs.db
 .idea/
 *.swp
 
-# MongoDB
-data/
-dump/
+# MongoDB local data
+backend/data/
+backend/dump/
 
 # Coverage
 coverage/
