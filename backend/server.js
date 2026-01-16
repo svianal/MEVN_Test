@@ -1,11 +1,18 @@
-const express = require("express");
+const express = require('express');
+const mongoose = require('mongoose');
+require('dotenv').config();
+
+const appointmentRoutes = require('./src/routes/appointmentRoutes');
+
 const app = express();
-const port = process.env.PORT || 3000;
 
-app.get("/", (req, res) => {
-	res.send("Hello World from Backend!");
-});
+app.use(express.json());
+app.use('/api', appointmentRoutes);
 
-app.listen(port, () => {
-	console.log(`Backend server listening at http://localhost:${port}`);
+mongoose.connect(process.env.MONGO_URI)
+  .then(() => console.log('MongoDB conectado'))
+  .catch(err => console.error(err));
+
+app.listen(3000, () => {
+  console.log('Servidor corriendo en puerto 3000');
 });
