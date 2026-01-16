@@ -14,14 +14,14 @@ exports.createAppointment = async (req, res) => {
       reason
     } = req.body;
 
-    // 1️⃣ Validar horas
+    // Validar horas
     if (timeToMinutes(endTime) <= timeToMinutes(startTime)) {
       return res.status(400).json({
         message: 'La hora de fin debe ser posterior a la hora de inicio'
       });
     }
 
-    // 2️⃣ Validar fecha (no pasada)
+    // Validar fecha (no pasada)
     const todayStr = new Date().toISOString().split('T')[0]; // "YYYY-MM-DD"
     if (date < todayStr) {
       return res.status(400).json({
@@ -29,7 +29,7 @@ exports.createAppointment = async (req, res) => {
       });
     }
 
-    // 3️⃣ Buscar solapamientos
+    // Buscar solapamientos
     const existingAppointments = await Appointment.find({
       doctorName,
       date,              // comparar string directamente
@@ -52,7 +52,7 @@ exports.createAppointment = async (req, res) => {
       });
     }
 
-    // 4️⃣ Crear cita
+    // Crear cita
     const appointment = await Appointment.create({
       patientName,
       doctorName,

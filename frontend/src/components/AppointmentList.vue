@@ -39,6 +39,40 @@
       </div>
     </div>
 
+    <!-- Paginación y selección de registros -->
+    <div class="flex justify-between items-center mb-4">
+      <!-- Selección de registros por página -->
+      <div>
+        <label class="text-sm font-medium mr-2">Mostrar:</label>
+        <select v-model.number="itemsPerPage" @change="currentPage = 1" :class="inputClass">
+          <option value="10">10</option>
+          <option value="50">50</option>
+          <option value="100">100</option>
+        </select>
+      </div>
+
+      <!-- Paginación -->
+      <div class="flex items-center space-x-2 text-sm">
+        <button 
+          @click="currentPage--" 
+          :disabled="currentPage === 1"
+          class="px-2 py-1 border rounded disabled:opacity-50"
+        >
+          Anterior
+        </button>
+
+        <span>Página {{ currentPage }} de {{ totalPages }}</span>
+
+        <button 
+          @click="currentPage++" 
+          :disabled="currentPage === totalPages"
+          class="px-2 py-1 border rounded disabled:opacity-50"
+        >
+          Siguiente
+        </button>
+      </div>
+    </div>
+
     <!-- Tabla -->
     <div class="overflow-x-auto">
       <table class="min-w-full divide-y divide-gray-200">
@@ -46,19 +80,18 @@
           <tr>
             <th class="px-4 py-2 text-left text-sm font-medium text-gray-700">Paciente</th>
             <th class="px-4 py-2 text-left text-sm font-medium text-gray-700">Doctor</th>
-            <th class="px-4 py-2 text-left text-sm font-medium text-gray-700">Fecha / Hora</th>
+            <th class="px-4 py-2 text-left text-sm font-medium text-gray-700">Fecha</th>
+            <th class="px-4 py-2 text-left text-sm font-medium text-gray-700">Hora</th>
             <th class="px-4 py-2 text-left text-sm font-medium text-gray-700">Estado</th>
             <th class="px-4 py-2 text-center text-sm font-medium text-gray-700">Acciones</th>
           </tr>
         </thead>
         <tbody class="divide-y divide-gray-200">
-          <tr v-for="appointment in filteredAppointments" :key="appointment._id">
+          <tr v-for="appointment in paginatedAppointments" :key="appointment._id">
             <td class="px-4 py-2 text-sm">{{ appointment.patientName }}</td>
             <td class="px-4 py-2 text-sm">{{ appointment.doctorName }}</td>
-            <td class="px-4 py-2 text-sm">
-              {{ formatDate(appointment.date) }} <br />
-              {{ appointment.startTime }} - {{ appointment.endTime }}
-            </td>
+            <td class="px-4 py-2 text-sm">{{ formatDate(appointment.date) }}</td>
+            <td class="px-4 py-2 text-sm">{{ appointment.startTime }} - {{ appointment.endTime }}</td>
             <td class="px-4 py-2 text-sm">
               <span
                 :class="['px-2 py-1 rounded-full text-white text-xs font-semibold', statusBadgeClass(appointment.status)]"
@@ -72,8 +105,8 @@
               <button @click="deleteAppointment(appointment._id)" class="text-red-600 hover:underline">Eliminar</button>
             </td>
           </tr>
-          <tr v-if="filteredAppointments.length === 0">
-            <td colspan="5" class="text-center py-4 text-gray-500">No hay citas</td>
+          <tr v-if="paginatedAppointments.length === 0">
+            <td colspan="6" class="text-center py-4 text-gray-500">No hay citas</td>
           </tr>
         </tbody>
       </table>
@@ -116,7 +149,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, watch } from 'vue';
 import AppointmentForm from './AppointmentForm.vue';
 
 const appointments = ref([]);
@@ -131,6 +164,10 @@ const selectedAppointment = ref({});
 const formModalOpen = ref(false);
 const formAppointment = ref(null);
 
+// Paginación
+const currentPage = ref(1);
+const itemsPerPage = ref(10);
+
 const fetchAppointments = async () => {
   try {
     const res = await fetch('http://localhost:3000/api/appointments');
@@ -142,7 +179,7 @@ const fetchAppointments = async () => {
   }
 };
 
-// 🔹 Filtrado usando strings "YYYY-MM-DD", NO new Date()
+// Filtrado usando strings "YYYY-MM-DD"
 const filteredAppointments = computed(() => {
   return appointments.value.filter(a => {
     const start = filters.value.startDate;
@@ -154,23 +191,37 @@ const filteredAppointments = computed(() => {
   });
 });
 
+// Paginación
+const paginatedAppointments = computed(() => {
+  const start = (currentPage.value - 1) * itemsPerPage.value;
+  const end = start + itemsPerPage.value;
+  return filteredAppointments.value.slice(start, end);
+});
+
+const totalPages = computed(() => {
+  return Math.max(1, Math.ceil(filteredAppointments.value.length / itemsPerPage.value));
+});
+
+// Reset page al cambiar filtros
+watch(filters, () => { currentPage.value = 1; }, { deep: true });
+
 const openViewModal = (appointment) => { selectedAppointment.value = appointment; viewModalOpen.value = true; };
 const closeViewModal = () => { viewModalOpen.value = false; selectedAppointment.value = {}; };
 const openFormModal = (appointment = null) => { formAppointment.value = appointment; formModalOpen.value = true; };
 const closeFormModal = () => { formModalOpen.value = false; formAppointment.value = null; };
 
-const onFormSaved = (savedAppointment) => {
-  const index = appointments.value.findIndex(a => a._id === savedAppointment._id);
-  if (index >= 0) appointments.value[index] = savedAppointment;
-  else appointments.value.push(savedAppointment);
+// Recargar toda la lista al guardar una cita
+const onFormSaved = async () => {
+  await fetchAppointments(); // <--- recarga la tabla automáticamente
   closeFormModal();
 };
 
+// Recargar lista al eliminar
 const deleteAppointment = async (id) => {
   if (!confirm('¿Eliminar esta cita?')) return;
   try {
     await fetch(`http://localhost:3000/api/appointments/${id}`, { method: 'DELETE' });
-    appointments.value = appointments.value.filter(a => a._id !== id);
+    await fetchAppointments(); // <--- recarga la tabla automáticamente
   } catch (err) {
     console.error(err);
   }

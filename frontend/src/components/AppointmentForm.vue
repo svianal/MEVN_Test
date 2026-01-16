@@ -32,19 +32,20 @@
         </p>
       </div>
 
-      <!-- Doctor -->
+      <!-- Doctor (editable) -->
       <div>
         <label class="block text-sm font-medium mb-1">Doctor</label>
-        <select
+        <input
+          type="text"
           v-model="form.doctorName"
-          @change="validateField('doctorName')"
+          @input="validateField('doctorName')"
+          list="doctors-list"
           :class="inputClass"
-        >
-          <option value="">Seleccionar doctor</option>
-          <option v-for="doc in doctors" :key="doc" :value="doc">
-            {{ doc }}
-          </option>
-        </select>
+          placeholder="Seleccionar o escribir doctor"
+        />
+        <datalist id="doctors-list">
+          <option v-for="doc in doctors" :key="doc" :value="doc">{{ doc }}</option>
+        </datalist>
         <p v-if="errors.doctorName" class="text-red-600 text-sm mt-1">
           {{ errors.doctorName }}
         </p>
@@ -57,6 +58,7 @@
           type="date"
           v-model="form.date"
           @change="validateField('date')"
+          :min="today"
           :class="inputClass"
         />
         <p v-if="errors.date" class="text-red-600 text-sm mt-1">
@@ -164,6 +166,10 @@ const emit = defineEmits(['saved', 'cancel'])
 const isEditMode = ref(!!props.appointment)
 const doctors = ref(['Dr. Pérez', 'Dr. García', 'Dr. López'])
 
+// Fecha mínima (hoy)
+const today = ref(new Date().toISOString().split('T')[0])
+
+// Formulario
 const form = reactive({
   patientName: '',
   doctorName: '',
@@ -171,11 +177,12 @@ const form = reactive({
   startTime: '',
   endTime: '',
   reason: '',
-  status: '',
+  status: 'scheduled', // Por defecto Programada
 })
 
 const errors = reactive({})
 const alert = reactive({ message: '', type: 'error' })
+
 const inputClass =
   'w-full border border-gray-300 rounded px-3 py-2 text-sm ' +
   'focus:outline-none focus:ring-2 focus:ring-blue-500'
@@ -203,7 +210,13 @@ const validateField = (field) => {
         : 'El doctor es obligatorio'
       break
     case 'date':
-      errors.date = form.date ? '' : 'La fecha es obligatoria'
+      if (!form.date) {
+        errors.date = 'La fecha es obligatoria'
+      } else if (form.date < today.value) {
+        errors.date = 'No se puede seleccionar una fecha pasada'
+      } else {
+        errors.date = ''
+      }
       break
     case 'startTime':
       errors.startTime = form.startTime ? '' : 'Hora inicio obligatoria'
@@ -277,7 +290,6 @@ const cancel = () => emit('cancel')
 // Acción al hacer click en "Ver cita" desde el modal
 const viewConflictAppointment = (appointment) => {
   showConflictModal.value = false
-  // Se puede abrir modal de vista o seleccionar la cita conflictiva
   emit('saved', appointment)
 }
 </script>
