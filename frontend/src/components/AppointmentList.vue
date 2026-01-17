@@ -39,40 +39,6 @@
       </div>
     </div>
 
-    <!-- Paginación y selección de registros -->
-    <div class="flex justify-between items-center mb-4">
-      <!-- Selección de registros por página -->
-      <div>
-        <label class="text-sm font-medium mr-2">Mostrar:</label>
-        <select v-model.number="itemsPerPage" @change="currentPage = 1" :class="inputClass">
-          <option value="10">10</option>
-          <option value="50">50</option>
-          <option value="100">100</option>
-        </select>
-      </div>
-
-      <!-- Paginación -->
-      <div class="flex items-center space-x-2 text-sm">
-        <button 
-          @click="currentPage--" 
-          :disabled="currentPage === 1"
-          class="px-2 py-1 border rounded disabled:opacity-50"
-        >
-          Anterior
-        </button>
-
-        <span>Página {{ currentPage }} de {{ totalPages }}</span>
-
-        <button 
-          @click="currentPage++" 
-          :disabled="currentPage === totalPages"
-          class="px-2 py-1 border rounded disabled:opacity-50"
-        >
-          Siguiente
-        </button>
-      </div>
-    </div>
-
     <!-- Tabla -->
     <div class="overflow-x-auto">
       <table class="min-w-full divide-y divide-gray-200">
@@ -100,44 +66,37 @@
               </span>
             </td>
             <td class="px-4 py-2 text-center space-x-2">
-              <button @click="openViewModal(appointment)" class="text-blue-600 hover:underline">Ver</button>
+              <button @click="openViewModal(appointment._id)" class="text-blue-600 hover:underline">Ver</button>
               <button @click="openFormModal(appointment)" class="text-green-600 hover:underline">Editar</button>
-              <button @click="deleteAppointment(appointment._id)" class="text-red-600 hover:underline">Eliminar</button>
+              <button @click="handleDelete(appointment._id)" class="text-red-600 hover:underline">Eliminar</button>
             </td>
-          </tr>
-          <tr v-if="paginatedAppointments.length === 0">
-            <td colspan="6" class="text-center py-4 text-gray-500">No hay citas</td>
           </tr>
         </tbody>
       </table>
     </div>
 
-    <!-- Modal para ver cita -->
+    <!-- Modal Ver -->
     <div v-if="viewModalOpen" class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
       <div class="bg-white rounded-lg shadow-lg w-11/12 md:w-1/2 p-6 relative">
-        <button @click="closeViewModal" class="absolute top-3 right-3 text-gray-500 hover:text-gray-700">✖</button>
+        <button @click="viewModalOpen = false" class="absolute top-3 right-3">X</button>
+
         <h3 class="text-xl font-semibold mb-4">Detalle de la Cita</h3>
-        <div class="space-y-2 text-sm">
+
+        <div v-if="selectedAppointment" class="space-y-2 text-sm">
           <p><strong>Paciente:</strong> {{ selectedAppointment.patientName }}</p>
           <p><strong>Doctor:</strong> {{ selectedAppointment.doctorName }}</p>
           <p><strong>Fecha:</strong> {{ formatDate(selectedAppointment.date) }}</p>
           <p><strong>Hora:</strong> {{ selectedAppointment.startTime }} - {{ selectedAppointment.endTime }}</p>
           <p><strong>Motivo:</strong> {{ selectedAppointment.reason }}</p>
-          <p><strong>Estado:</strong>
-            <span :class="['px-2 py-1 rounded-full text-white text-xs font-semibold', statusBadgeClass(selectedAppointment.status)]">
-              {{ statusLabel(selectedAppointment.status) }}
-            </span>
-          </p>
-          <p><strong>Creado:</strong> {{ formatDateTime(selectedAppointment.createdAt) }}</p>
-          <p><strong>Actualizado:</strong> {{ formatDateTime(selectedAppointment.updatedAt) }}</p>
+          <p><strong>Estado:</strong> {{ statusLabel(selectedAppointment.status) }}</p>
         </div>
       </div>
     </div>
 
-    <!-- Modal para crear/editar cita -->
+    <!-- Modal crear / editar -->
     <div v-if="formModalOpen" class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
       <div class="bg-white rounded-lg shadow-lg w-11/12 md:w-1/2 p-6 relative">
-        <button @click="closeFormModal" class="absolute top-3 right-3 text-gray-500 hover:text-gray-700">✖</button>
+        <button @click="closeFormModal" class="absolute top-3 right-3">X</button>
         <AppointmentForm
           :appointment="formAppointment"
           @saved="onFormSaved"
@@ -149,108 +108,87 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue';
-import AppointmentForm from './AppointmentForm.vue';
+import { ref, computed, onMounted, watch } from 'vue'
+import AppointmentForm from './AppointmentForm.vue'
+import {
+  getAppointments,
+  getAppointmentById,
+  deleteAppointment
+} from '@/services/appointmentsService'
 
-const appointments = ref([]);
-const filters = ref({ startDate: '', endDate: '', doctorName: '', status: '' });
-const doctors = ref([]);
+const appointments = ref([])
+const doctors = ref([])
+const filters = ref({ startDate: '', endDate: '', doctorName: '', status: '' })
 
-const inputClass = 'w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500';
+const formModalOpen = ref(false)
+const formAppointment = ref(null)
 
-// Modales
-const viewModalOpen = ref(false);
-const selectedAppointment = ref({});
-const formModalOpen = ref(false);
-const formAppointment = ref(null);
+const viewModalOpen = ref(false)
+const selectedAppointment = ref(null)
 
-// Paginación
-const currentPage = ref(1);
-const itemsPerPage = ref(10);
+const currentPage = ref(1)
+const itemsPerPage = ref(10)
 
 const fetchAppointments = async () => {
-  try {
-    const res = await fetch('http://localhost:3000/api/appointments');
-    const data = await res.json();
-    appointments.value = data;
-    doctors.value = [...new Set(data.map(a => a.doctorName))];
-  } catch (err) {
-    console.error(err);
-  }
-};
+  const { data } = await getAppointments()
+  appointments.value = data
+  doctors.value = [...new Set(data.map(a => a.doctorName))]
+}
 
-// Filtrado usando strings "YYYY-MM-DD"
-const filteredAppointments = computed(() => {
-  return appointments.value.filter(a => {
-    const start = filters.value.startDate;
-    const end = filters.value.endDate;
-    const matchesDate = (!start || a.date >= start) && (!end || a.date <= end);
-    const matchesDoctor = !filters.value.doctorName || a.doctorName === filters.value.doctorName;
-    const matchesStatus = !filters.value.status || a.status === filters.value.status;
-    return matchesDate && matchesDoctor && matchesStatus;
-  });
-});
+const openViewModal = async (id) => {
+  const { data } = await getAppointmentById(id)
+  selectedAppointment.value = data
+  viewModalOpen.value = true
+}
 
-// Paginación
-const paginatedAppointments = computed(() => {
-  const start = (currentPage.value - 1) * itemsPerPage.value;
-  const end = start + itemsPerPage.value;
-  return filteredAppointments.value.slice(start, end);
-});
+const openFormModal = (appointment = null) => {
+  formAppointment.value = appointment
+  formModalOpen.value = true
+}
 
-const totalPages = computed(() => {
-  return Math.max(1, Math.ceil(filteredAppointments.value.length / itemsPerPage.value));
-});
+const closeFormModal = () => {
+  formModalOpen.value = false
+  formAppointment.value = null
+}
 
-// Reset page al cambiar filtros
-watch(filters, () => { currentPage.value = 1; }, { deep: true });
-
-const openViewModal = (appointment) => { selectedAppointment.value = appointment; viewModalOpen.value = true; };
-const closeViewModal = () => { viewModalOpen.value = false; selectedAppointment.value = {}; };
-const openFormModal = (appointment = null) => { formAppointment.value = appointment; formModalOpen.value = true; };
-const closeFormModal = () => { formModalOpen.value = false; formAppointment.value = null; };
-
-// Recargar toda la lista al guardar una cita
 const onFormSaved = async () => {
-  await fetchAppointments(); // <--- recarga la tabla automáticamente
-  closeFormModal();
-};
+  await fetchAppointments()
+  closeFormModal()
+}
 
-// Recargar lista al eliminar
-const deleteAppointment = async (id) => {
-  if (!confirm('¿Eliminar esta cita?')) return;
-  try {
-    await fetch(`http://localhost:3000/api/appointments/${id}`, { method: 'DELETE' });
-    await fetchAppointments(); // <--- recarga la tabla automáticamente
-  } catch (err) {
-    console.error(err);
-  }
-};
+const handleDelete = async (id) => {
+  if (!confirm('¿Eliminar esta cita?')) return
+  await deleteAppointment(id)
+  await fetchAppointments()
+}
 
-// 🔹 Formateo de fechas usando strings
-const formatDate = (dateStr) => {
-  if (!dateStr) return '';
-  const [year, month, day] = dateStr.split('-');
-  return `${day}/${month}/${year}`;
-};
-const formatDateTime = (dateStr) => new Date(dateStr).toLocaleString('es-ES', { year:'numeric', month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' });
+const filteredAppointments = computed(() =>
+  appointments.value.filter(a =>
+    (!filters.value.startDate || a.date >= filters.value.startDate) &&
+    (!filters.value.endDate || a.date <= filters.value.endDate) &&
+    (!filters.value.doctorName || a.doctorName === filters.value.doctorName) &&
+    (!filters.value.status || a.status === filters.value.status)
+  )
+)
 
-const statusBadgeClass = (status) => {
-  switch (status) {
-    case 'scheduled': return 'bg-yellow-500';
-    case 'completed': return 'bg-green-500';
-    case 'cancelled': return 'bg-red-500';
-    default: return 'bg-gray-500';
-  }
-};
-const statusLabel = (status) => {
-  switch (status) {
-    case 'scheduled': return 'Programada';
-    case 'completed': return 'Completada';
-    case 'cancelled': return 'Cancelada';
-    default: return status;
-  }
-};
+const paginatedAppointments = computed(() => {
+  const start = (currentPage.value - 1) * itemsPerPage.value
+  return filteredAppointments.value.slice(start, start + itemsPerPage.value)
+})
 
-onMounted(fetchAppointments);
+watch(filters, () => (currentPage.value = 1), { deep: true })
+
+const formatDate = d => d ? d.split('-').reverse().join('/') : ''
+
+const statusLabel = s =>
+  s === 'scheduled' ? 'Programada' :
+  s === 'completed' ? 'Completada' :
+  s === 'cancelled' ? 'Cancelada' : s
+
+const statusBadgeClass = s =>
+  s === 'scheduled' ? 'bg-yellow-500' :
+  s === 'completed' ? 'bg-green-500' :
+  s === 'cancelled' ? 'bg-red-500' : 'bg-gray-500'
+
+onMounted(fetchAppointments)
 </script>

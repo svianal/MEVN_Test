@@ -32,7 +32,7 @@
         </p>
       </div>
 
-      <!-- Doctor (editable) -->
+      <!-- Doctor -->
       <div>
         <label class="block text-sm font-medium mb-1">Doctor</label>
         <input
@@ -44,7 +44,7 @@
           placeholder="Seleccionar o escribir doctor"
         />
         <datalist id="doctors-list">
-          <option v-for="doc in doctors" :key="doc" :value="doc">{{ doc }}</option>
+          <option v-for="doc in doctors" :key="doc" :value="doc" />
         </datalist>
         <p v-if="errors.doctorName" class="text-red-600 text-sm mt-1">
           {{ errors.doctorName }}
@@ -144,7 +144,7 @@
       </div>
     </form>
 
-    <!-- Modal de conflictos -->
+    <!-- Modal conflictos -->
     <ConflictAlert
       v-if="showConflictModal"
       :conflicts="conflicts"
@@ -157,19 +157,22 @@
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
 import ConflictAlert from './ConflictAlert.vue'
+import {
+  createAppointment,
+  updateAppointment,
+} from '@/services/appointmentsService'
 
 const props = defineProps({
   appointment: { type: Object, default: null },
 })
+
 const emit = defineEmits(['saved', 'cancel'])
 
 const isEditMode = ref(!!props.appointment)
 const doctors = ref(['Dr. Pérez', 'Dr. García', 'Dr. López'])
 
-// Fecha mínima (hoy)
 const today = ref(new Date().toISOString().split('T')[0])
 
-// Formulario
 const form = reactive({
   patientName: '',
   doctorName: '',
@@ -177,15 +180,14 @@ const form = reactive({
   startTime: '',
   endTime: '',
   reason: '',
-  status: 'scheduled', // Por defecto Programada
+  status: 'scheduled',
 })
 
 const errors = reactive({})
 const alert = reactive({ message: '', type: 'error' })
 
 const inputClass =
-  'w-full border border-gray-300 rounded px-3 py-2 text-sm ' +
-  'focus:outline-none focus:ring-2 focus:ring-blue-500'
+  'w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500'
 
 // Conflictos
 const conflicts = ref([])
@@ -200,35 +202,25 @@ onMounted(() => {
 const validateField = (field) => {
   switch (field) {
     case 'patientName':
-      errors.patientName = form.patientName
-        ? ''
-        : 'El nombre del paciente es obligatorio'
+      errors.patientName = form.patientName ? '' : 'El nombre del paciente es obligatorio'
       break
     case 'doctorName':
-      errors.doctorName = form.doctorName
-        ? ''
-        : 'El doctor es obligatorio'
+      errors.doctorName = form.doctorName ? '' : 'El doctor es obligatorio'
       break
     case 'date':
-      if (!form.date) {
-        errors.date = 'La fecha es obligatoria'
-      } else if (form.date < today.value) {
-        errors.date = 'No se puede seleccionar una fecha pasada'
-      } else {
-        errors.date = ''
-      }
+      if (!form.date) errors.date = 'La fecha es obligatoria'
+      else if (form.date < today.value) errors.date = 'No se puede seleccionar una fecha pasada'
+      else errors.date = ''
       break
     case 'startTime':
       errors.startTime = form.startTime ? '' : 'Hora inicio obligatoria'
-      if (form.startTime && form.endTime && form.startTime >= form.endTime) {
+      if (form.startTime && form.endTime && form.startTime >= form.endTime)
         errors.startTime = 'Hora inicio debe ser menor que hora fin'
-      }
       break
     case 'endTime':
       errors.endTime = form.endTime ? '' : 'Hora fin obligatoria'
-      if (form.startTime && form.endTime && form.startTime >= form.endTime) {
+      if (form.startTime && form.endTime && form.startTime >= form.endTime)
         errors.endTime = 'Hora fin debe ser mayor que hora inicio'
-      }
       break
     case 'reason':
       errors.reason = form.reason ? '' : 'El motivo es obligatorio'
@@ -240,46 +232,31 @@ const validateField = (field) => {
 }
 
 const validateForm = () => {
-  ;[
-    'patientName',
-    'doctorName',
-    'date',
-    'startTime',
-    'endTime',
-    'reason',
-    'status',
-  ].forEach(validateField)
-  return Object.values(errors).every((e) => !e)
+  ;['patientName', 'doctorName', 'date', 'startTime', 'endTime', 'reason', 'status'].forEach(validateField)
+  return Object.values(errors).every(e => !e)
 }
 
 const handleSubmit = async () => {
   if (!validateForm()) return
 
   try {
-    const url = isEditMode.value
-      ? `http://localhost:3000/api/appointments/${form._id}`
-      : 'http://localhost:3000/api/appointments'
+    let response
 
-    const method = isEditMode.value ? 'PUT' : 'POST'
+    if (isEditMode.value) {
+      response = await updateAppointment(form._id, form)
+    } else {
+      response = await createAppointment(form)
+    }
 
-    const res = await fetch(url, {
-      method,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(form),
-    })
-
-    if (res.status === 409) {
-      const data = await res.json()
-      conflicts.value = data.conflicts || []
+    alert.message = isEditMode.value ? 'Cita actualizada' : 'Cita creada'
+    alert.type = 'success'
+    emit('saved', response.data)
+  } catch (error) {
+    if (error.response?.status === 409) {
+      conflicts.value = error.response.data.conflicts || []
       showConflictModal.value = true
       return
     }
-
-    const result = await res.json()
-    alert.message = isEditMode.value ? 'Cita actualizada' : 'Cita creada'
-    alert.type = 'success'
-    emit('saved', result)
-  } catch {
     alert.message = 'Error al guardar la cita'
     alert.type = 'error'
   }
@@ -287,7 +264,6 @@ const handleSubmit = async () => {
 
 const cancel = () => emit('cancel')
 
-// Acción al hacer click en "Ver cita" desde el modal
 const viewConflictAppointment = (appointment) => {
   showConflictModal.value = false
   emit('saved', appointment)
